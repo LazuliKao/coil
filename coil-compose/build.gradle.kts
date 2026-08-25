@@ -1,16 +1,16 @@
 import coil3.addAllMultiplatformTargets
-import coil3.multiplatformAndroidLibrary
+import coil3.androidLibrary
 
 plugins {
-    id("com.android.kotlin.multiplatform.library")
+    id("com.android.library")
     id("kotlin-multiplatform")
-    id("org.jetbrains.kotlinx.atomicfu")
+    id("org.jetbrains.kotlin.plugin.atomicfu")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-addAllMultiplatformTargets(libs.versions.skiko, enableNativeLinux = false)
-multiplatformAndroidLibrary(name = "coil3.compose.singleton")
+addAllMultiplatformTargets(libs.versions.skiko)
+androidLibrary(name = "coil3.compose.singleton")
 
 kotlin {
     sourceSets {

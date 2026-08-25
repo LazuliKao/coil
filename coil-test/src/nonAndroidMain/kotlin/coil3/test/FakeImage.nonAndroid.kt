@@ -4,6 +4,7 @@ import coil3.Canvas
 import coil3.Image
 import coil3.annotation.Poko
 import org.jetbrains.skia.Paint
+import org.jetbrains.skia.Rect
 
 @Deprecated(
     message = "ColorImage supports the same functionality, has `color` as the first argument, " +
@@ -27,6 +28,6 @@ actual class FakeImage actual constructor(
                 .apply { color = this@FakeImage.color }
                 .also { lazyPaint = it }
         }
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+        canvas.drawRect(Rect.makeWH(width.toFloat(), height.toFloat()), paint)
     }
 }

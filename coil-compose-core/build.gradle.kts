@@ -1,25 +1,24 @@
 import coil3.addAllMultiplatformTargets
-import coil3.multiplatformAndroidLibrary
+import coil3.androidLibrary
 
 plugins {
-    id("com.android.kotlin.multiplatform.library")
+    id("com.android.library")
     id("kotlin-multiplatform")
-    id("org.jetbrains.kotlinx.atomicfu")
+    id("org.jetbrains.kotlin.plugin.atomicfu")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("dev.drewhamilton.poko")
-    id("androidx.baselineprofile.consumer")
 }
 
-addAllMultiplatformTargets(libs.versions.skiko, enableNativeLinux = false)
-multiplatformAndroidLibrary(name = "coil3.compose.core")
+addAllMultiplatformTargets(libs.versions.skiko)
+androidLibrary(name = "coil3.compose.core")
 
 kotlin {
     sourceSets {
         commonMain {
             dependencies {
                 api(projects.coilCore)
-                api(libs.compose.foundation)
+                api(compose.foundation)
+                api(libs.atomicfu)
             }
         }
         commonTest {
@@ -32,32 +31,6 @@ kotlin {
             dependencies {
                 implementation(libs.google.drawablepainter)
             }
-        }
-        getByName("androidHostTest") {
-            dependencies {
-                implementation(projects.internal.testUtils)
-                implementation(libs.bundles.test.jvm)
-            }
-        }
-        getByName("androidDeviceTest") {
-            dependencies {
-                implementation(projects.internal.testUtils)
-                implementation(libs.bundles.test.android)
-                implementation(libs.compose.ui.test.junit4)
-            }
-        }
-    }
-}
-
-baselineProfile {
-    mergeIntoMain = true
-    saveInSrc = true
-    filter {
-        include("coil3.compose.**")
-    }
-    variants {
-        create("androidMain") {
-            from(project(":internal:benchmark"))
         }
     }
 }

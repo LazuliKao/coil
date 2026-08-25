@@ -12,6 +12,8 @@ import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.impl.use
 
+import org.jetbrains.skia.Rect
+
 internal actual fun println(
     level: Logger.Level,
     tag: String,
@@ -56,17 +58,8 @@ internal fun Bitmap.Companion.makeFromImage(
     Canvas(bitmap).use { canvas ->
         canvas.drawImageRect(
             image = image,
-            srcLeft = 0f,
-            srcTop = 0f,
-            srcRight = srcWidth.toFloat(),
-            srcBottom = srcHeight.toFloat(),
-            dstLeft = 0f,
-            dstTop = 0f,
-            dstRight = outWidth.toFloat(),
-            dstBottom = outHeight.toFloat(),
-            samplingMode = SamplingMode.DEFAULT,
-            paint = null,
-            strict = false,
+            src = Rect.makeWH(srcWidth.toFloat(), srcHeight.toFloat()),
+            dst = Rect.makeWH(outWidth.toFloat(), outHeight.toFloat()),
         )
     }
     return bitmap

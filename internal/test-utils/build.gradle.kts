@@ -1,19 +1,14 @@
 import coil3.addAllMultiplatformTargets
-import coil3.multiplatformAndroidLibrary
+import coil3.androidLibrary
 
 plugins {
-    id("com.android.kotlin.multiplatform.library")
+    id("com.android.library")
     id("kotlin-multiplatform")
-    id("org.jetbrains.kotlinx.atomicfu")
-    id("dev.drewhamilton.poko")
+    id("org.jetbrains.kotlin.plugin.atomicfu")
 }
 
 addAllMultiplatformTargets(libs.versions.skiko)
-multiplatformAndroidLibrary(name = "coil3.test.utils") {
-    androidResources {
-        enable = true
-    }
-}
+androidLibrary(name = "coil3.test.utils")
 
 kotlin {
     sourceSets {
@@ -23,7 +18,6 @@ kotlin {
                 api(projects.coilNetworkCore)
                 api(libs.bundles.test.common)
                 api(libs.coroutines.test)
-                api(libs.kotlinx.datetime)
             }
         }
         androidMain {
@@ -40,6 +34,7 @@ kotlin {
             dependencies {
                 api(libs.kotlin.test.junit)
                 api(libs.junit)
+                api(libs.okio.fakefilesystem)
             }
         }
     }

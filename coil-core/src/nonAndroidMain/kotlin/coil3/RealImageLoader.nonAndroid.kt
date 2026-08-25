@@ -17,7 +17,7 @@ internal actual fun getDisposable(
     job: Deferred<ImageResult>,
 ): Disposable = OneShotDisposable(job)
 
-internal actual inline fun transition(
+internal actual fun transition(
     result: ImageResult,
     target: Target?,
     eventListener: EventListener,

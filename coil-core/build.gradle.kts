@@ -1,22 +1,18 @@
 import coil3.addAllMultiplatformTargets
-import coil3.multiplatformAndroidLibrary
+import coil3.androidLibrary
 
 plugins {
-    id("com.android.kotlin.multiplatform.library")
+    id("com.android.library")
     id("kotlin-multiplatform")
-    id("org.jetbrains.kotlinx.atomicfu")
-    id("dev.drewhamilton.poko")
-    id("androidx.baselineprofile.consumer")
+    id("org.jetbrains.kotlin.plugin.atomicfu")
+    id("org.jetbrains.compose")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
 addAllMultiplatformTargets(libs.versions.skiko)
-multiplatformAndroidLibrary(name = "coil3.core") {
-    androidResources {
-        enable = true
-    }
-    optimization {
-        consumerKeepRules.publish = true
-        consumerKeepRules.files += project.file("shrinker-rules.pro")
+androidLibrary(name = "coil3.core") {
+    defaultConfig {
+        consumerProguardFiles("shrinker-rules.pro")
     }
 }
 
@@ -27,6 +23,8 @@ kotlin {
                 api(libs.coroutines.core)
                 api(libs.kotlin.stdlib)
                 api(libs.okio.core)
+                api(libs.atomicfu)
+                implementation(compose.ui)
             }
         }
         commonTest {
@@ -40,11 +38,6 @@ kotlin {
                 api(libs.skiko)
             }
         }
-        named("jsCommonMain") {
-            dependencies {
-                implementation(libs.kotlinx.browser)
-            }
-        }
         androidMain {
             dependencies {
                 implementation(libs.androidx.annotation)
@@ -56,41 +49,5 @@ kotlin {
                 api(libs.androidx.lifecycle.runtime)
             }
         }
-        getByName("androidHostTest") {
-            dependencies {
-                implementation(projects.internal.testUtils)
-                implementation(libs.bundles.test.jvm)
-            }
-        }
-        getByName("androidDeviceTest") {
-            dependencies {
-                implementation(projects.internal.testUtils)
-                implementation(libs.bundles.test.android)
-            }
-        }
-    }
-}
-
-baselineProfile {
-    mergeIntoMain = true
-    saveInSrc = true
-    filter {
-        include("coil3.**")
-        exclude("coil3.compose.**")
-        exclude("coil3.gif.**")
-        exclude("coil3.network.**")
-        exclude("coil3.svg.**")
-        exclude("coil3.video.**")
-    }
-    variants {
-        create("androidMain") {
-            from(project(":internal:benchmark"))
-        }
-    }
-}
-
-dependencies {
-    lintPublish(projects.coilLint) {
-        isTransitive = false
     }
 }

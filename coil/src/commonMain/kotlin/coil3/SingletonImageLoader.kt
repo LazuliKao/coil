@@ -87,7 +87,7 @@ object SingletonImageLoader {
         // Local storage to ensure newImageLoader is invoked at most once.
         var imageLoader: ImageLoader? = null
 
-        return reference.updateAndGet { value ->
+        return reference.updateAndGet { value: Any? ->
             when {
                 value is ImageLoader -> value
                 imageLoader != null -> imageLoader

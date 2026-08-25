@@ -15,5 +15,5 @@ private val LEFT_ANGLE_BRACKET = "<".encodeUtf8()
  */
 fun DecodeUtils.isSvg(source: BufferedSource): Boolean {
     return source.rangeEquals(0, LEFT_ANGLE_BRACKET) &&
-        source.indexOf(SVG_TAG, 0, 1024) != -1L
+        source.indexOf(SVG_TAG, 0L) in 0L..1024L
 }

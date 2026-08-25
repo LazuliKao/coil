@@ -46,7 +46,7 @@ internal actual fun getDisposable(
     }
 }
 
-internal actual inline fun transition(
+internal actual fun transition(
     result: ImageResult,
     target: Target?,
     eventListener: EventListener,

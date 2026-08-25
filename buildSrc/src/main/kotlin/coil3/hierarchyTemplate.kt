@@ -6,6 +6,7 @@ import org.jetbrains.kotlin.gradle.ExperimentalKotlinGradlePluginApi
 import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.plugin.KotlinHierarchyBuilder
 import org.jetbrains.kotlin.gradle.plugin.KotlinHierarchyTemplate
+import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSetTree
 
 private val hierarchyTemplate = KotlinHierarchyTemplate {
@@ -25,6 +26,17 @@ private val hierarchyTemplate = KotlinHierarchyTemplate {
         groupNative()
         groupNonNative()
         groupNonApple()
+        groupOhos()
+        groupNonOhos()
+    }
+}
+
+private fun KotlinHierarchyBuilder.groupNonApple() {
+    group("nonApple") {
+        groupJvmCommon()
+        groupJsCommon()
+        groupLinux()
+        groupOhos()
     }
 }
 
@@ -33,6 +45,7 @@ private fun KotlinHierarchyBuilder.groupNonAndroid() {
         withJvm()
         groupJsCommon()
         groupNative()
+        groupOhos()
     }
 }
 
@@ -47,17 +60,14 @@ private fun KotlinHierarchyBuilder.groupNonJsCommon() {
     group("nonJsCommon") {
         groupJvmCommon()
         groupNative()
+        groupOhos()
     }
 }
 
 private fun KotlinHierarchyBuilder.groupJvmCommon() {
     group("jvmCommon") {
-        // Use withCompilations predicate to match Android targets from both
-        // the old plugin (androidTarget()) and the new plugin (com.android.kotlin.multiplatform.library)
-        withCompilations { compilation ->
-            compilation.target.platformType.name == "androidJvm" ||
-                compilation.target.platformType.name == "jvm"
-        }
+        withAndroidTarget()
+        withJvm()
     }
 }
 
@@ -65,12 +75,14 @@ private fun KotlinHierarchyBuilder.groupNonJvmCommon() {
     group("nonJvmCommon") {
         groupJsCommon()
         groupNative()
+        groupOhos()
     }
 }
 
 private fun KotlinHierarchyBuilder.groupNative() {
     group("native") {
-        withNative()
+        // Exclude ohos targets so they don't inherit Apple-specific code (e.g. NSURLMapper).
+        withCompilations { it.platformType == KotlinPlatformType.native && !it.target.name.startsWith("ohos") }
 
         groupApple()
         groupLinux()
@@ -97,17 +109,23 @@ private fun KotlinHierarchyBuilder.groupLinux() {
     }
 }
 
-private fun KotlinHierarchyBuilder.groupNonApple() {
-    group("nonApple") {
-        groupNonNative()
-        groupLinux()
-    }
-}
-
 private fun KotlinHierarchyBuilder.groupNonNative() {
     group("nonNative") {
         groupJsCommon()
         groupJvmCommon()
+    }
+}
+
+private fun KotlinHierarchyBuilder.groupOhos() {
+    group("ohos") {
+        withCompilations { it.platformType == KotlinPlatformType.native && it.target.name.startsWith("ohos") }
+    }
+}
+
+private fun KotlinHierarchyBuilder.groupNonOhos() {
+    group("nonOhos") {
+        groupJvmCommon()
+        groupNative()
     }
 }
 

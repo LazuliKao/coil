@@ -21,13 +21,10 @@ import coil3.request.NullRequestDataException
 import coil3.request.RequestService
 import coil3.request.SuccessResult
 import coil3.target.Target
-import coil3.util.ErrorResult
-import coil3.util.FetcherServiceLoaderTarget
 import coil3.util.Logger
-import coil3.util.ServiceLoaderComponentRegistry
 import coil3.util.SystemCallbacks
+import coil3.util.addServiceLoaderComponents
 import coil3.util.emoji
-import coil3.util.log
 import coil3.util.mapNotNullIndices
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
@@ -52,14 +49,16 @@ internal class RealImageLoader(
     override val defaults get() = options.defaults
     override val memoryCache by options.memoryCacheLazy
     override val diskCache by options.diskCacheLazy
-    override val components = options.componentRegistry.newBuilder()
-        .addServiceLoaderComponents(options)
-        .addAndroidComponents(options)
-        .addJvmComponents(options)
-        .addAppleComponents(options)
-        .addCommonComponents()
-        .add(EngineInterceptor(this, systemCallbacks, requestService, options.logger))
-        .build()
+    override val components = run {
+        val builder = options.componentRegistry.newBuilder()
+        builder.addServiceLoaderComponents(options)
+        builder.addAndroidComponents(options)
+        builder.addJvmComponents(options)
+        builder.addAppleComponents(options)
+        builder.addCommonComponents()
+        builder.add(EngineInterceptor(this, systemCallbacks, requestService, options.logger))
+        builder.build()
+    }
     private val shutdown = atomic(false)
 
     override fun enqueue(request: ImageRequest): Disposable {
@@ -155,7 +154,11 @@ internal class RealImageLoader(
                 throw throwable
             } else {
                 // Create the default error result if there's an uncaught exception.
-                val result = ErrorResult(request, throwable)
+                val result = ErrorResult(
+                    image = null,
+                    request = request,
+                    throwable = throwable,
+                )
                 onError(result, request.target, eventListener)
                 return result
             }
@@ -180,8 +183,11 @@ internal class RealImageLoader(
     ) {
         val request = result.request
         val dataSource = result.dataSource
-        options.logger?.log(TAG, Logger.Level.Info) {
-            "${dataSource.emoji} Successful (${dataSource.name}) - ${request.data}"
+        val logger = options.logger
+        if (logger != null && logger.minLevel <= Logger.Level.Info) {
+            val emoji = dataSource.emoji
+            val data = request.data.toString()
+            logger.log(TAG, Logger.Level.Info, emoji + " Successful (" + dataSource.name + ") - " + data, null)
         }
         transition(result, target, eventListener) {
             target?.onSuccess(result.image)
@@ -196,8 +202,10 @@ internal class RealImageLoader(
         eventListener: EventListener,
     ) {
         val request = result.request
-        options.logger?.log(TAG, result.throwable) {
-            "🚨 Failed - ${request.data}"
+        val logger = options.logger
+        if (logger != null && logger.minLevel <= Logger.Level.Error) {
+            val data = request.data.toString()
+            logger.log(TAG, Logger.Level.Error, "🚨 Failed - " + data, result.throwable)
         }
         transition(result, target, eventListener) {
             target?.onError(result.image)
@@ -210,8 +218,10 @@ internal class RealImageLoader(
         request: ImageRequest,
         eventListener: EventListener,
     ) {
-        options.logger?.log(TAG, Logger.Level.Info) {
-            "🏗 Cancelled - ${request.data}"
+        val logger = options.logger
+        if (logger != null && logger.minLevel <= Logger.Level.Info) {
+            val data = request.data.toString()
+            logger.log(TAG, Logger.Level.Info, "🏗 Cancelled - " + data, null)
         }
         eventListener.onCancel(request)
         request.listener?.onCancel(request)
@@ -231,7 +241,7 @@ internal class RealImageLoader(
 
 private fun CoroutineScope(logger: Logger?): CoroutineScope {
     val context = SupervisorJob() +
-        CoroutineExceptionHandler { _, throwable -> logger?.log(TAG, throwable) }
+        CoroutineExceptionHandler { _, throwable -> logger?.log(TAG, Logger.Level.Error, null, throwable) }
     return CoroutineScope(context)
 }
 
@@ -244,39 +254,13 @@ internal expect fun getDisposable(
     job: Deferred<ImageResult>,
 ): Disposable
 
-internal expect inline fun transition(
+internal expect fun transition(
     result: ImageResult,
     target: Target?,
     eventListener: EventListener,
     setImage: () -> Unit,
 )
 
-@Suppress("UNCHECKED_CAST")
-internal fun ComponentRegistry.Builder.addServiceLoaderComponents(
-    options: RealImageLoader.Options,
-): ComponentRegistry.Builder {
-    if (options.serviceLoaderEnabled) {
-        // Delay reading the fetchers and decoders until the fetching/decoding stage.
-        addFetcherFactories {
-            ServiceLoaderComponentRegistry.fetchers
-                .sortedByDescending { it.priority() }
-                .mapNotNullIndices { target ->
-                    target as FetcherServiceLoaderTarget<Any>
-                    val factory = target.factory() ?: return@mapNotNullIndices null
-                    val type = target.type() ?: return@mapNotNullIndices null
-                    factory to type
-                }
-        }
-        addDecoderFactories {
-            ServiceLoaderComponentRegistry.decoders
-                .sortedByDescending { it.priority() }
-                .mapNotNullIndices { target ->
-                    target.factory()
-                }
-        }
-    }
-    return this
-}
 
 internal expect fun ComponentRegistry.Builder.addAndroidComponents(
     options: RealImageLoader.Options,

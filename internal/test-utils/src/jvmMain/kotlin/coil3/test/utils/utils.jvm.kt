@@ -6,8 +6,7 @@ import okio.buffer
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.Canvas
 import org.jetbrains.skia.Image
-import org.jetbrains.skia.SamplingMode
-import org.jetbrains.skia.impl.use
+import org.jetbrains.skia.Rect
 
 actual fun decodeBitmapResource(
     path: String,
@@ -20,22 +19,9 @@ actual fun decodeBitmapResource(
             val image = Image.makeFromEncoded(source.buffer().readByteArray())
             val bitmap = Bitmap()
             bitmap.allocN32Pixels(image.width, image.height)
-            Canvas(bitmap).use { canvas ->
-                canvas.drawImageRect(
-                    image = image,
-                    srcLeft = 0f,
-                    srcTop = 0f,
-                    srcRight = image.width.toFloat(),
-                    srcBottom = image.height.toFloat(),
-                    dstLeft = 0f,
-                    dstTop = 0f,
-                    dstRight = image.width.toFloat(),
-                    dstBottom = image.height.toFloat(),
-                    samplingMode = SamplingMode.DEFAULT,
-                    paint = null,
-                    strict = false,
-                )
-            }
+            val canvas = Canvas(bitmap)
+            val rect = Rect.makeWH(image.width.toFloat(), image.height.toFloat())
+            canvas.drawImageRect(image, rect)
             return bitmap
         } catch (e: Exception) {
             if (failures++ > 5) throw e

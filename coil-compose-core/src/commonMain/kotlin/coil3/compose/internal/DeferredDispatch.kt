@@ -72,8 +72,8 @@ private class DeferredDispatchCoroutineDispatcher(
         return currentDispatcher.isDispatchNeeded(context)
     }
 
-    override fun limitedParallelism(parallelism: Int, name: String?): CoroutineDispatcher {
-        return currentDispatcher.limitedParallelism(parallelism, name)
+    override fun limitedParallelism(parallelism: Int): CoroutineDispatcher {
+        return currentDispatcher.limitedParallelism(parallelism)
     }
 
     override fun dispatch(context: CoroutineContext, block: Runnable) {
