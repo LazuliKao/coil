@@ -2,6 +2,25 @@ import coil3.addAllMultiplatformTargets
 import coil3.androidLibrary
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
+val skikoJvmNativeTarget = buildString {
+    append(
+        when {
+            System.getProperty("os.name").startsWith("Windows") -> "windows"
+            System.getProperty("os.name").startsWith("Mac") -> "macos"
+            System.getProperty("os.name").startsWith("Linux") -> "linux"
+            else -> error("Unsupported OS: ${System.getProperty("os.name")}")
+        },
+    )
+    append('-')
+    append(
+        when (System.getProperty("os.arch")) {
+            "x86_64", "amd64" -> "x64"
+            "aarch64" -> "arm64"
+            else -> error("Unsupported architecture: ${System.getProperty("os.arch")}")
+        },
+    )
+}
+
 plugins {
     id("com.android.library")
     id("kotlin-multiplatform")
@@ -46,6 +65,10 @@ kotlin {
             dependencies {
                 implementation(libs.skiko)
             }
+        }
+        jvmTest.dependencies {
+            implementation(libs.bundles.test.jvm)
+            implementation("org.jetbrains.skiko:skiko-awt-runtime-$skikoJvmNativeTarget:0.7.97")
         }
     }
 }
