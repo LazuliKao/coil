@@ -33,6 +33,7 @@ include(
     "coil-network-core",
     "coil-network-ktor3",
     "coil-svg",
+    "coil-gif",
     "coil-bom",
     "coil-test",
 )

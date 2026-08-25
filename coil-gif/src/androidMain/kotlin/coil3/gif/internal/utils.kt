@@ -22,9 +22,10 @@ internal val PixelOpacity.flag: Int
         PixelOpacity.OPAQUE -> PixelFormat.OPAQUE
     }
 
+@RequiresApi(23)
 internal fun animatable2CallbackOf(
     onStart: (() -> Unit)?,
-    onEnd: (() -> Unit)?,
+    onEnd: (() -> Unit)?
 ) = object : Animatable2.AnimationCallback() {
     override fun onAnimationStart(drawable: Drawable?) { onStart?.invoke() }
     override fun onAnimationEnd(drawable: Drawable?) { onEnd?.invoke() }
@@ -32,7 +33,7 @@ internal fun animatable2CallbackOf(
 
 internal fun animatable2CompatCallbackOf(
     onStart: (() -> Unit)?,
-    onEnd: (() -> Unit)?,
+    onEnd: (() -> Unit)?
 ) = object : Animatable2Compat.AnimationCallback() {
     override fun onAnimationStart(drawable: Drawable) { onStart?.invoke() }
     override fun onAnimationEnd(drawable: Drawable) { onEnd?.invoke() }

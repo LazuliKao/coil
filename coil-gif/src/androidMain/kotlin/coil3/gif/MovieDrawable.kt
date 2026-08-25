@@ -22,7 +22,6 @@ import coil3.decode.DecodeUtils
 import coil3.gif.PixelOpacity.OPAQUE
 import coil3.gif.PixelOpacity.UNCHANGED
 import coil3.size.Scale
-import coil3.size.Size
 import coil3.util.isHardware
 
 /**
@@ -218,14 +217,10 @@ class MovieDrawable @JvmOverloads constructor(
         val movieHeight = movie.height()
         if (movieWidth <= 0 || movieHeight <= 0) return
 
-        softwareScale = DecodeUtils.computeSizeMultiplier(
-            srcWidth = movieWidth,
-            srcHeight = movieHeight,
-            dstWidth = boundsWidth,
-            dstHeight = boundsHeight,
-            scale = scale,
-            maxSize = Size.ORIGINAL,
-        ).run { if (isSoftwareScalingEnabled) this else coerceAtMost(1.0) }.toFloat()
+        softwareScale = DecodeUtils
+            .computeSizeMultiplier(movieWidth, movieHeight, boundsWidth, boundsHeight, scale)
+            .run { if (isSoftwareScalingEnabled) this else coerceAtMost(1.0) }
+            .toFloat()
         val bitmapWidth = (softwareScale * movieWidth).toInt()
         val bitmapHeight = (softwareScale * movieHeight).toInt()
 
@@ -239,14 +234,9 @@ class MovieDrawable @JvmOverloads constructor(
             hardwareDx = 0f
             hardwareDy = 0f
         } else {
-            hardwareScale = DecodeUtils.computeSizeMultiplier(
-                srcWidth = bitmapWidth,
-                srcHeight = bitmapHeight,
-                dstWidth = boundsWidth,
-                dstHeight = boundsHeight,
-                scale = scale,
-                maxSize = Size.ORIGINAL,
-            ).toFloat()
+            hardwareScale = DecodeUtils
+                .computeSizeMultiplier(bitmapWidth, bitmapHeight, boundsWidth, boundsHeight, scale)
+                .toFloat()
             hardwareDx = bounds.left + (boundsWidth - hardwareScale * bitmapWidth) / 2
             hardwareDy = bounds.top + (boundsHeight - hardwareScale * bitmapHeight) / 2
         }

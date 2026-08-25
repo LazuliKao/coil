@@ -1,0 +1,6 @@
+package = coil3.gif.native
+headers = animated_image.h
+headerFilter = animated_image.h
+staticLibraries = libresource_utils.a
+libraryPaths = src/nativeInterop/cinterop/cpp/cmake-build-default-ohos
+linkerOpts = -lace_napi.z -lohresmgr -lrawfile.z -limage_source -lhilog_ndk.z -lace_ndk.z -limage_common -lpixelmap

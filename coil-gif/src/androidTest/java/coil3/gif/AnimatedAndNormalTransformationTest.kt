@@ -80,7 +80,7 @@ class AnimatedAndNormalTransformationTest {
         assertIs<SuccessResult>(actual)
         // Make sure this is not an animated result.
         assertIsNot<Animatable>(actual.image.asDrawable(context.resources))
-        assertIs<BitmapImage>(actual.image).bitmap.assertIsSimilarTo(expected)
+        (actual.image as BitmapImage).bitmap.assertIsSimilarTo(expected)
     }
 
     class AnimatedCircleTransformation : AnimatedTransformation {
