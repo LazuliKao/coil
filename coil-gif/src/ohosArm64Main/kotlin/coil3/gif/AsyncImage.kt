@@ -14,12 +14,14 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import coil3.ImageLoader
 import coil3.compose.AsyncImage as CoilAsyncImage
 import coil3.decode.DecodeResult
+import coil3.decode.DecodeUtils
 import coil3.decode.Decoder
 import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
 import coil3.Canvas
 import coil3.Image
+import coil3.SingletonImageLoader
 import coil3.annotation.InternalCoilApi
 import coil3.compose.LocalPlatformContext
 import coil3.request.ErrorResult
@@ -35,22 +37,21 @@ import org.jetbrains.skia.Image as SkiaImage
 import org.jetbrains.skia.ImageInfo
 import kotlin.experimental.ExperimentalNativeApi
 
-internal data class HeifAnimationData(
-    val handle: Long,
-    val width: Int,
-    val height: Int,
-    val frameCount: Int,
-    val delays: List<Int>
+/**
+ * 鸿蒙端动图元数据对象（不可变纯 Kotlin 数据结构，避免在 Coil 内存缓存中存放 C++ 原生指针导致 Use-After-Free）
+ */
+data class OhosGifAnimation(
+    val bytes: ByteArray,
 )
 
-private const val MAX_ANIMATION_PIXELS = 1_500_000  // ~e.g. 1224x1224
-private const val MAX_ANIMATION_FRAMES = 120
+private const val MAX_ANIMATION_PIXELS = 4_000_000  // ~e.g. 2000x2000
+private const val MAX_ANIMATION_FRAMES = 300
 
 internal class SkiaImageWrapper(
-    private val image: SkiaImage,
-    val animation: HeifAnimationData?
+    val image: SkiaImage,
+    val animation: OhosGifAnimation?
 ) : Image {
-    override val size: Long = (image.width * image.height * 4).toLong()
+    override val size: Long = (image.width * image.height * 4).toLong() + (animation?.bytes?.size ?: 0)
     override val width: Int get() = image.width
     override val height: Int get() = image.height
     override val shareable: Boolean = true
@@ -60,91 +61,52 @@ internal class SkiaImageWrapper(
     }
 }
 
-internal class OhosImageDecoder(
+/**
+ * 鸿蒙平台专用图片解码器，支持 GIF/HEIF 动图解析与 Skia 极速降级
+ */
+class OhosImageDecoder(
     private val source: ImageSource,
     private val options: Options
 ) : Decoder {
 
     override suspend fun decode(): DecodeResult = withContext(Dispatchers.IO) {
         val bytes = source.source().use { it.readByteArray() }
-        decodeWithAnimation(bytes) ?: decodeWithStatic(bytes)
-    }
+        // 1. 在后台 IO 线程极速异步解码首帧底图（毫秒级完成上屏）
+        val staticResult = decodeWithStatic(bytes)
 
-    private fun decodeWithAnimation(bytes: ByteArray): DecodeResult? {
-        val handle = bytes.usePinned { pinned ->
-            create_heif_animation(pinned.addressOf(0).reinterpret(), bytes.size.toULong())
-        }
-        if (handle == 0L) return null
+        // 2. 检测是否为动图格式（GIF, WebP, HEIF 等），若是则附带动图原始字节供视图层后台异步播放
+        val buffer = okio.Buffer().write(bytes)
+        val isAnimated = DecodeUtils.isGif(buffer) ||
+                DecodeUtils.isAnimatedWebP(okio.Buffer().write(bytes)) ||
+                DecodeUtils.isAnimatedHeif(okio.Buffer().write(bytes))
 
-        var success = false
-        return try {
-            val result = memScoped {
-                val countVar = alloc<UIntVar>()
-                if (animation_get_frame_count(handle, countVar.ptr) != 0 || countVar.value == 0u) {
-                    return@memScoped null
-                }
-                val frameCount = countVar.value.toInt()
-
-                if (frameCount <= 0 || frameCount > MAX_ANIMATION_FRAMES) {
-                    return@memScoped null
-                }
-
-                val delays = MutableList(frameCount) { 100 }
-                var width = 0
-                var height = 0
-
-                for (index in 0 until frameCount) {
-                    // 逐帧读取宽高与延迟，确保数据合法。
-                    val widthVar = alloc<UIntVar>()
-                    val heightVar = alloc<UIntVar>()
-                    val delayVar = alloc<IntVar>()
-                    if (animation_get_frame_info(handle, index.toUInt(), widthVar.ptr, heightVar.ptr, delayVar.ptr) != 0) {
-                        return@memScoped null
-                    }
-
-                    width = widthVar.value.toInt()
-                    height = heightVar.value.toInt()
-                    delays[index] = delayVar.value.takeIf { it > 0 } ?: 100
-                }
-
-                if (width <= 0 || height <= 0) return@memScoped null
-                if (width * height > MAX_ANIMATION_PIXELS) {
-                    return@memScoped null
-                }
-                if ((width * height).toLong() * frameCount > MAX_ANIMATION_PIXELS.toLong() * MAX_ANIMATION_FRAMES) {
-                    return@memScoped null
-                }
-
-                if (width == 0 || height == 0) return@memScoped null
-
-                val firstFrame = ByteArray(width * height * 4)
-                val copyResult = firstFrame.usePinned { pinned ->
-                    animation_copy_frame_pixels(handle, 0u, pinned.addressOf(0).reinterpret(), firstFrame.size.toULong())
-                }
-                if (copyResult != 0) return@memScoped null
-
-                val animationData = HeifAnimationData(
-                    handle = handle,
-                    width = width,
-                    height = height,
-                    frameCount = frameCount,
-                    delays = delays
+        if (isAnimated) {
+            val wrapper = staticResult.image as? SkiaImageWrapper
+            if (wrapper != null) {
+                DecodeResult(
+                    image = SkiaImageWrapper(wrapper.image, OhosGifAnimation(bytes)),
+                    isSampled = staticResult.isSampled
                 )
-
-                buildDecodeResult(width, height, firstFrame, animationData)
+            } else {
+                staticResult
             }
-            if (result != null) {
-                success = true
-            }
-            result
-        } finally {
-            if (!success) {
-                destroy_heif_animation(handle)
-            }
+        } else {
+            staticResult
         }
     }
 
     private fun decodeWithStatic(bytes: ByteArray): DecodeResult {
+        // 优先尝试 Skia 极速解码首帧（针对 PNG 等基础格式）
+        val skiaImage = try {
+            SkiaImage.makeFromEncoded(bytes)
+        } catch (_: Throwable) {
+            null
+        }
+        if (skiaImage != null) {
+            return DecodeResult(SkiaImageWrapper(skiaImage, null), isSampled = false)
+        }
+
+        // 调用鸿蒙系统 NDK 极速解码第 0 帧（针对 GIF, JPEG, HEIF, WebP 等）
         val handle = bytes.usePinned { pinned ->
             create_heif_image(
                 pinned.addressOf(0).reinterpret(),
@@ -153,7 +115,7 @@ internal class OhosImageDecoder(
                 0f
             )
         }
-        if (handle == 0L) error("create_heif_image failed")
+        if (handle == 0L) error("create_heif_image and skia decode failed")
 
         try {
             return memScoped {
@@ -185,7 +147,7 @@ internal class OhosImageDecoder(
         width: Int,
         height: Int,
         pixels: ByteArray,
-        animation: HeifAnimationData?
+        animation: OhosGifAnimation?
     ): DecodeResult {
         // 将原生像素缓冲封装成 Skia Image，并连同动图元数据回传给 Coil。
         val imageInfo = ImageInfo(
@@ -211,6 +173,9 @@ internal class OhosImageDecoder(
     }
 }
 
+/**
+ * 鸿蒙平台支持动图逐帧渲染的 AsyncImage 组件
+ */
 @Composable
 actual fun AsyncImage(
     model: String,
@@ -220,17 +185,10 @@ actual fun AsyncImage(
     onSuccess: (() -> Unit)?,
     onError: ((Throwable?) -> Unit)?
 ) {
-    val context = LocalPlatformContext.current
-    val imageLoader = remember {
-        ImageLoader.Builder(context)
-            .components {
-                add(OhosImageDecoder.Factory())
-            }
-            .build()
-    }
-
-    var animationData by remember(model) { mutableStateOf<HeifAnimationData?>(null) }
+    // 统一使用全局 SingletonImageLoader，共享宿主工程配置的 Fetcher 链与缓存体系
+    val imageLoader = SingletonImageLoader.get(LocalPlatformContext.current)
     // 保存当前可播放的动图数据，null 时仅渲染静态首帧。
+    var animationData by remember(model) { mutableStateOf<OhosGifAnimation?>(null) }
     val fillParentBounds = modifier != Modifier
 
     Box(modifier = modifier) {
@@ -247,27 +205,12 @@ actual fun AsyncImage(
             onError = { error ->
                 // 请求异常：清空动画数据，并把 Throwable 返回给调用方。
                 animationData = null
-                onError?.invoke((error as? ErrorResult)?.throwable)
+                onError?.invoke(error.result.throwable)
             },
             onSuccess = { success ->
-                // 请求成功：提取动图元数据，判断是否满足播放条件。
+                // 请求成功：提取动图元数据，准备异步动图播放。
                 val wrapper = success.result.image as? SkiaImageWrapper
-                val animation = wrapper?.animation
-                if (animation != null) {
-                    val framePixels = animation.width * animation.height
-                    val canPlay = animation.frameCount > 1 &&
-                            framePixels <= MAX_ANIMATION_PIXELS &&
-                            framePixels.toLong() * animation.frameCount <= MAX_ANIMATION_PIXELS.toLong() * MAX_ANIMATION_FRAMES
-
-                    if (canPlay) {
-                        animationData = animation
-                    } else {
-                        destroy_heif_animation(animation.handle)
-                        animationData = null
-                    }
-                } else {
-                    animationData = null
-                }
+                animationData = wrapper?.animation
                 onSuccess?.invoke()
             }
         )
@@ -276,55 +219,99 @@ actual fun AsyncImage(
     }
 }
 
+/**
+ * 动图覆层，通过与组件生命周期绑定的协程在后台异步驱动逐帧解码与播放
+ */
 @Composable
 private fun BoxScope.AnimatedOverlay(
-    animation: HeifAnimationData?,
+    animation: OhosGifAnimation?,
     contentDescription: String?,
     fillParentBounds: Boolean,
 ) {
     animation ?: return
-    if (animation.frameCount <= 1) return
-
-    DisposableEffect(animation) {
-        // 与 Compose 生命周期绑定，释放 native 句柄。
-        onDispose {
-            destroy_heif_animation(animation.handle)
-        }
-    }
 
     var currentFrame by remember(animation) { mutableStateOf<ImageBitmap?>(null) }
 
     LaunchedEffect(animation) {
-        // 逐帧拉取像素并刷新 Compose 层 Bitmap。
-        val pixelBuffer = ByteArray(animation.width * animation.height * 4)
-        var frameIndex = 0
-        while (isActive) {
-            val copyResult = pixelBuffer.usePinned { pinned ->
-                animation_copy_frame_pixels(animation.handle, frameIndex.toUInt(), pinned.addressOf(0).reinterpret(), pixelBuffer.size.toULong())
+        // 在后台计算线程异步初始化 NDK 动图解码句柄并提取帧元数据，完全不阻塞 UI 渲染
+        withContext(Dispatchers.Default) {
+            val handle = animation.bytes.usePinned { pinned ->
+                create_heif_animation(pinned.addressOf(0).reinterpret(), animation.bytes.size.toULong())
             }
-            if (copyResult == 0) {
-                // 将 RGBA 像素复制成 Skia Image，再转 Compose ImageBitmap。
-                val bitmap = withContext(Dispatchers.Default) {
-                    val info = ImageInfo(
-                        animation.width,
-                        animation.height,
-                        org.jetbrains.skia.ColorType.RGBA_8888,
-                        org.jetbrains.skia.ColorAlphaType.PREMUL
-                    )
-                    SkiaImage.makeRaster(
-                        imageInfo = info,
-                        bytes = pixelBuffer.copyOf(),
-                        rowBytes = animation.width * 4
-                    ).toComposeImageBitmap()
-                }
-                currentFrame = bitmap
-            }
+            if (handle == 0L) return@withContext
 
-            val delayMs = animation.delays.getOrElse(frameIndex) { 100 }
-                .coerceAtLeast(16) // 下限 16ms 保持约 60 FPS
-            // 按帧延迟节奏驱动下一帧。
-            delay(delayMs.toLong())
-            frameIndex = (frameIndex + 1) % animation.frameCount
+            try {
+                // 异步读取帧数与各帧延迟
+                val meta = memScoped {
+                    val countVar = alloc<UIntVar>()
+                    if (animation_get_frame_count(handle, countVar.ptr) != 0 || countVar.value <= 1u) {
+                        return@memScoped null
+                    }
+                    val frameCount = countVar.value.toInt()
+                    if (frameCount > MAX_ANIMATION_FRAMES) return@memScoped null
+
+                    val delays = MutableList(frameCount) { 100 }
+                    var width = 0
+                    var height = 0
+
+                    for (index in 0 until frameCount) {
+                        val widthVar = alloc<UIntVar>()
+                        val heightVar = alloc<UIntVar>()
+                        val delayVar = alloc<IntVar>()
+                        if (animation_get_frame_info(handle, index.toUInt(), widthVar.ptr, heightVar.ptr, delayVar.ptr) != 0) {
+                            return@memScoped null
+                        }
+                        width = widthVar.value.toInt()
+                        height = heightVar.value.toInt()
+                        delays[index] = delayVar.value.takeIf { it > 0 } ?: 100
+                    }
+
+                    if (width <= 0 || height <= 0 || width * height > MAX_ANIMATION_PIXELS) {
+                        return@memScoped null
+                    }
+                    if ((width * height).toLong() * frameCount > 300_000_000L) {
+                        return@memScoped null
+                    }
+
+                    Triple(frameCount, width to height, delays)
+                } ?: return@withContext
+
+                val frameCount = meta.first
+                val (width, height) = meta.second
+                val delays = meta.third
+
+                // 逐帧拉取像素并刷新 Compose 层 Bitmap，复用单块缓冲区避免 GC 抖动
+                val pixelBuffer = ByteArray(width * height * 4)
+                val info = ImageInfo(
+                    width,
+                    height,
+                    org.jetbrains.skia.ColorType.RGBA_8888,
+                    org.jetbrains.skia.ColorAlphaType.PREMUL
+                )
+                var frameIndex = 0
+                while (isActive) {
+                    val copyResult = pixelBuffer.usePinned { pinned ->
+                        animation_copy_frame_pixels(handle, frameIndex.toUInt(), pinned.addressOf(0).reinterpret(), pixelBuffer.size.toULong())
+                    }
+                    if (copyResult == 0) {
+                        // 将 RGBA 像素复制成 Skia Image，再转 Compose ImageBitmap
+                        currentFrame = SkiaImage.makeRaster(
+                            imageInfo = info,
+                            bytes = pixelBuffer.copyOf(),
+                            rowBytes = width * 4
+                        ).toComposeImageBitmap()
+                    }
+
+                    val delayMs = delays.getOrElse(frameIndex) { 100 }
+                        .coerceAtLeast(16) // 下限 16ms 保持约 60 FPS
+                    // 按帧延迟节奏驱动下一帧
+                    delay(delayMs.toLong())
+                    frameIndex = (frameIndex + 1) % frameCount
+                }
+            } finally {
+                // 当 Composable 卸载或重新触发时，安全销毁当前生命周期的解码句柄
+                destroy_heif_animation(handle)
+            }
         }
     }
 

@@ -162,55 +162,21 @@ int64_t create_heif_image(uint8_t *buffer, size_t length, float width, float hei
         OH_DecodingOptions_SetDesiredDynamicRange(decodingOpts, IMAGE_DYNAMIC_RANGE_AUTO);
     }
 
-    // ===== 步骤5：根据帧数创建 PixelMap =====
-    OH_LOG_INFO(LOG_APP, "步骤4: 创建 PixelMap...");
+    // ===== 步骤4：创建单帧 PixelMap（无论动图或静态图，仅极速解码第 0 帧） =====
+    OH_LOG_INFO(LOG_APP, "步骤4: 创建首帧 PixelMap...");
     OH_PixelmapNative* pixelmap = nullptr;
-    if (frameCnt > 1) {
-        OH_LOG_INFO(LOG_APP, "检测到动图，帧数: %{public}u", frameCnt);
-        std::vector<OH_PixelmapNative*> frames(frameCnt, nullptr);
-        errCode = OH_ImageSourceNative_CreatePixelmapList(source, decodingOpts, frames.data(), frames.size());
-        if (decodingOpts) {
-            OH_DecodingOptions_Release(decodingOpts);
-            decodingOpts = nullptr;
-        }
+    errCode = OH_ImageSourceNative_CreatePixelmap(source, decodingOpts, &pixelmap);
+    OH_LOG_INFO(LOG_APP, "OH_ImageSourceNative_CreatePixelmap: %{public}p", (void*)OH_ImageSourceNative_CreatePixelmap);
 
-        if (errCode != IMAGE_SUCCESS) {
-            OH_LOG_ERROR(LOG_APP, "创建 PixelMap 列表失败，错误码: %{public}d", errCode);
-            for (auto* frame : frames) {
-                if (frame) {
-                    OH_PixelmapNative_Release(frame);
-                }
-            }
-            OH_ImageSourceNative_Release(source);
-            return 0;
-        }
+    if (decodingOpts) {
+        OH_DecodingOptions_Release(decodingOpts);
+        decodingOpts = nullptr;
+    }
 
-        pixelmap = frames[0];
-        for (size_t i = 1; i < frames.size(); ++i) {
-            if (frames[i]) {
-                OH_PixelmapNative_Release(frames[i]);
-            }
-        }
-
-        if (!pixelmap) {
-            OH_LOG_ERROR(LOG_APP, "动图帧列表为空或首帧无效");
-            OH_ImageSourceNative_Release(source);
-            return 0;
-        }
-    } else {
-        errCode = OH_ImageSourceNative_CreatePixelmap(source, decodingOpts, &pixelmap);
-        OH_LOG_INFO(LOG_APP, "OH_ImageSourceNative_CreatePixelmap: %{public}p", (void*)OH_ImageSourceNative_CreatePixelmap);
-
-        if (decodingOpts) {
-            OH_DecodingOptions_Release(decodingOpts);
-            decodingOpts = nullptr;
-        }
-
-        if (errCode != IMAGE_SUCCESS || !pixelmap) {
-            OH_LOG_ERROR(LOG_APP, "创建 PixelMap 失败，错误码: %{public}d", errCode);
-            OH_ImageSourceNative_Release(source);
-            return 0;
-        }
+    if (errCode != IMAGE_SUCCESS || !pixelmap) {
+        OH_LOG_ERROR(LOG_APP, "创建 PixelMap 失败，错误码: %{public}d", errCode);
+        OH_ImageSourceNative_Release(source);
+        return 0;
     }
 
     OH_ImageSourceNative_Release(source);
