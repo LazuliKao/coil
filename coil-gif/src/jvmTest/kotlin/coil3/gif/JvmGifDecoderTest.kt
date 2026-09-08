@@ -6,12 +6,14 @@ import coil3.decode.DataSource
 import coil3.decode.ImageSource
 import coil3.fetch.SourceFetchResult
 import coil3.request.Options
+import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import okio.Buffer
 import okio.FileSystem
@@ -41,6 +43,35 @@ class JvmGifDecoderTest {
     }
 
     @Test
+    fun decodesAnimatedWebpMetadataAndFrames() = runTest {
+        val file = File("../internal/test-utils/src/androidMain/assets/animated.webp")
+        val bytes = file.readBytes()
+        val result = decode(bytes, "image/webp")
+        val image = assertIs<JvmGifImage>(result.image)
+        val animation = assertIs<JvmGifAnimation>(image.animation)
+
+        assertTrue(animation.delays.size > 1)
+        assertContentEquals(bytes, animation.bytes)
+
+        val codec = Codec.makeFromData(Data.makeFromBytes(bytes))
+        assertEquals(animation.delays.size, codec.frameCount)
+        val firstFrame = codec.readFrame(0)
+        val secondFrame = codec.readFrame(1)
+        assertFalse(firstFrame.readPixels()!!.contentEquals(secondFrame.readPixels()!!))
+        codec.close()
+    }
+
+    @Test
+    fun doesNotHandleStaticWebpSource() {
+        val file = File("../internal/test-utils/src/androidMain/assets/static.webp")
+        val bytes = file.readBytes()
+        val source = imageSource(bytes)
+        val result = SourceFetchResult(source, "image/webp", DataSource.MEMORY)
+
+        assertNull(JvmGifDecoder.Factory().create(result, options, imageLoader))
+    }
+
+    @Test
     fun doesNotHandleNonGifSource() {
         val source = imageSource(PNG_HEADER)
         val result = SourceFetchResult(source, "image/png", DataSource.MEMORY)
@@ -48,9 +79,9 @@ class JvmGifDecoderTest {
         assertNull(JvmGifDecoder.Factory().create(result, options, imageLoader))
     }
 
-    private suspend fun decode(bytes: ByteArray) = JvmGifDecoder.Factory()
+    private suspend fun decode(bytes: ByteArray, mimeType: String = "image/gif") = JvmGifDecoder.Factory()
         .create(
-            SourceFetchResult(imageSource(bytes), "image/gif", DataSource.MEMORY),
+            SourceFetchResult(imageSource(bytes), mimeType, DataSource.MEMORY),
             options,
             imageLoader,
         )!!

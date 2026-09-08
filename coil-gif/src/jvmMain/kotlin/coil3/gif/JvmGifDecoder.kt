@@ -51,7 +51,8 @@ internal class JvmGifDecoder(
                 JvmGifAnimation(
                     bytes = bytes,
                     delays = IntArray(frameCount) { index ->
-                        frameInfo.getOrNull(index)?.duration ?: DEFAULT_FRAME_DELAY_MILLIS
+                        val duration = frameInfo.getOrNull(index)?.duration
+                        if (duration != null && duration > 0) duration else DEFAULT_FRAME_DELAY_MILLIS
                     },
                     repetitionCount = codec.repetitionCount,
                     width = bitmap.width,
@@ -76,7 +77,8 @@ internal class JvmGifDecoder(
             options: Options,
             imageLoader: ImageLoader,
         ): Decoder? {
-            return if (DecodeUtils.isGif(result.source.source())) {
+            val source = result.source.source()
+            return if (DecodeUtils.isGif(source) || DecodeUtils.isAnimatedWebP(source)) {
                 JvmGifDecoder(result.source)
             } else {
                 null
