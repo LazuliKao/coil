@@ -7,7 +7,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 
 fun Project.addAllMultiplatformTargets(
     skikoVersion: Provider<String>,
-    enableWasm: Boolean = false,
+    enableWasm: Boolean = true,
     enableNativeLinux: Boolean = false,
 ) {
     plugins.withId("org.jetbrains.kotlin.multiplatform") {
@@ -19,6 +19,14 @@ fun Project.addAllMultiplatformTargets(
             }
 
             jvm()
+
+            if (enableWasm) {
+                @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+                wasmJs {
+                    browser()
+                    binaries.library()
+                }
+            }
 
             if (System.getProperty("os.name").contains("Mac", ignoreCase = true)) {
                 iosArm64()
@@ -43,7 +51,7 @@ fun Project.addAllMultiplatformTargets(
     configurations.configureEach {
         resolutionStrategy.eachDependency {
             if (requested.group.startsWith("org.jetbrains.compose") && requested.version?.contains("KBA") == true) {
-                if (name.contains("desktop", ignoreCase = true) || name.contains("jvm", ignoreCase = true)) {
+                if (name.contains("desktop", ignoreCase = true) || name.contains("jvm", ignoreCase = true) || name.contains("wasm", ignoreCase = true)) {
                     useVersion("1.6.1")
                 }
             }
@@ -51,7 +59,14 @@ fun Project.addAllMultiplatformTargets(
                 if (name.contains("desktop", ignoreCase = true) || name.contains("jvm", ignoreCase = true)) {
                     useTarget("org.jetbrains.skiko:skiko-awt:0.7.97")
                 }
+                if (name.contains("wasm", ignoreCase = true)) {
+                    useVersion("0.7.97")
+                }
+            }
+            if (requested.group == "io.ktor" && name.contains("wasm", ignoreCase = true)) {
+                useVersion("3.0.3")
             }
         }
     }
 }
+
